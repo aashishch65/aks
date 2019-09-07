@@ -1,28 +1,51 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://a- task: Kubernetes@1
-  inputs:
-    connectionType: 'Azure Resource Manager'
-    azureSubscriptionEndpoint: 'Free Trial(ca48ba2a-d46b-44e7-919d-698613e6718c)'
-    azureResourceGroup: 'test-resource-group'
-    kubernetesCluster: 'test-aks'
-    namespace: 'test'
-    command: 
-    secretType: 'dockerRegistry'
-    containerRegistryType: 'Azure Container Registry'a.ms/yaml
-
 trigger:
 - master
 
-pool:
-  vmImage: 'ubuntu-latest'
+resources:
+- repo: self
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+variables:
+  dockerRegistryServiceConnection: ca48ba2a-d46b-44e7-919d-698613e6718c
+  imageRepository: azure-vote-front
+  containerRegistry: testkuberegistry.azurecr.io
+  dockerfilePath: '**/Dockerfile'
+  tag: v1
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+  # Kubernetes Namespace
+  k8sNamespace: 'test'
+  imagePullSecret: 'secret/acr-auth'
+
+  # Agent VM image name
+  vmImageName: 'ubuntu-latest'
+
+- stage: Deploy
+  displayName: Deploy stage
+  jobs:
+  - deployment: Deploy
+    displayName: Deploy job
+    pool:
+      vmImage: $(vmImageName)
+    #environment: 'shashankbarsinpipelinesjavascriptdocker.aksnamespace'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: KubernetesManifest@0
+            displayName: Create imagePullSecret
+            inputs:
+              action: createSecret
+              secretName: $(imagePullSecret)
+              namespace: $(k8sNamespace)
+              dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
+
+          - task: KubernetesManifest@0
+            displayName: Deploy to Kubernetes cluster
+            inputs:
+              action: deploy
+              namespace: $(k8sNamespace)
+              manifests: |
+                $(Pipeline.Workspace)/azure-vote-all-in-one-redis.yaml
+              imagePullSecrets: |
+                $(imagePullSecret)
+              containers: |
+                $(containerRegistry)/$(imageRepository):$(tag)
